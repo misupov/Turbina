@@ -1,0 +1,37 @@
+[
+  {
+    "outputFileName": "wwwroot/assets/css/site.min.css",
+    "inputFiles": [
+      "wwwroot/assets/css/site.css"
+    ]
+  },
+  {
+    "outputFileName": "wwwroot/assets/js/ropes.min.js",
+    "inputFiles": [
+      "wwwroot/assets/js/ropes.js"
+    ],
+    "minify": {
+      "enabled": true,
+      "renameLocals": true
+    },
+    "sourceMap": true
+  },
+  {
+    "outputFileName": "wwwroot/assets/js/session.min.js",
+    "inputFiles": [
+      "wwwroot/assets/js/session.js"
+    ]
+  },
+  {
+    "outputFileName": "wwwroot/assets/js/main.min.js",
+    "inputFiles": [
+      "wwwroot/assets/js/main.js"
+    ]
+  },
+  {
+    "outputFileName": "wwwroot/assets/js/template-engine.min.js",
+    "inputFiles": [
+      "wwwroot/assets/js/template-engine.js"
+    ]
+  }
+]

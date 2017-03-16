@@ -1,0 +1,431 @@
+<link rel="import" href="turbina-node.html">
+<link rel="import" href="turbina-pin.html">
+
+<template>
+    <style>
+        .surface-host {
+            position: relative;
+            background: url("../assets/img/bg/whitenoise.png");
+/*            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;*/
+            font-family: system-ui;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #zoomPane {
+            position: absolute;
+            left: -5000px;
+            top: -5000px;
+            width: 10000px;
+            height: 10000px;
+        }
+
+        ::content turbina-node {
+            position: absolute;
+        }
+
+        svg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+    </style>
+    <div class="surface-host">
+        <div id="zoomPane">
+            <svg id="svgCanvas" draggable="false" focusable="false" xmlns="http://www.w3.org/2000/svg"></svg>
+            <content select="turbina-node"></content>
+        </div>
+    </div>
+</template>
+
+<script>
+    'use strict';
+    var turbinaSurfaceDocument = document.currentScript.ownerDocument;
+
+    class TurbinaSurface extends HTMLElement {
+
+        createdCallback() {
+            this._root = this.createShadowRoot();
+            this._root.appendChild(turbinaSurfaceDocument.querySelector('template').content.cloneNode(true));
+            this._templateEngine = new TemplateEngine();
+
+            this._nodeMouseDownThis = e => this._nodeMouseDown(e);
+            this._nodeMouseMoveThis = e => this._nodeMouseMove(e);
+            this._nodeMouseUpThis = e => this._nodeMouseUp(e);
+
+            this._surfaceMouseDownThis = e => this._surfaceMouseDown(e);
+            this._surfaceMouseMoveThis = e => this._surfaceMouseMove(e);
+            this._surfaceMouseUpThis = e => this._surfaceMouseUp(e);
+
+            this._nodes = new Map();
+            this._links = new Set();
+            this._dragging = null;
+            this._light = 0.0;
+            this._prevtimestamp = 0;
+            this._isAnimating = false;
+            this._scale = 1;
+            this._originX = 0;
+            this._originY = 0;
+
+            this.addEventListener("wheel", e => this._wheel(e));
+
+            this.svgCanvas = this._root.querySelector("#svgCanvas");
+
+            this.addEventListener("mousedown", this._surfaceMouseDownThis);
+            this.addEventListener("touchstart", this._surfaceMouseDownThis);
+            //                this.addEventListener("contextmenu",
+            //                    e => {
+            //                        e.preventDefault();
+            //                        alert("right-click");
+            //                    });
+        }
+
+        get nodes() {
+            return this._nodes;
+        }
+
+        get templateEngine() {
+            return this._templateEngine;
+        }
+
+        getNode(name) {
+            return this.nodes.get(name);
+        }
+
+        async addNode(nodeDefinition) {
+            const node = document.createElement('turbina-node');
+            await node.setup(this, nodeDefinition);
+            this._nodes.set(node.name, node);
+            this._setDraggable(node);
+            node.style.zIndex = (this._getMaxZIndex() + 1).toString();
+            return () => this.appendChild(node);
+        }
+
+        reset() {
+            this._nodes.clear();
+            this._links.clear();
+            return () => {
+                while (this.firstChild) {
+                    this.removeChild(this.firstChild);
+                }
+                this.invalidateEdges();
+            };
+        }
+
+        invalidateEdges() {
+            this._needsRedraw = true;
+            this._animateEdges();
+        }
+
+        async bind(link) {
+            const fromNodeName = link["from-node"];
+            const fromPinName = link["from-pin"];
+            const toNodeName = link["to-node"];
+            const toPinName = link["to-pin"];
+            const fromNode = this.getNode(fromNodeName);
+            const toNode = this.getNode(toNodeName);
+            const fromPin = fromNode.getPin(fromPinName);
+            const toPin = toNode.getPin(toPinName);
+
+            const rope = new Rope(fromPin.anchorPoint, toPin.anchorPoint);
+            this._links.add(rope);
+            this.invalidateEdges();
+        }
+
+        startBinding(pin) {
+            if (pin.direction === "inlet") {
+                let existingLink = null;
+                this._links.forEach(link => {
+                    if (link.to === pin.anchorPoint)
+                        existingLink = link;
+                });
+                if (existingLink !== null) {
+                    this.session.unbind(pin.node.name, pin.name);
+                    this._dragging = existingLink;
+                    this.invalidateEdges();
+                    return;
+                }
+            }
+            const mouseAnchorPoint = { x: pin.anchorPoint.x, y: pin.anchorPoint.y };
+            const rope = new Rope(pin.anchorPoint, mouseAnchorPoint);
+            this._links.add(rope);
+            this._dragging = rope;
+            this.invalidateEdges();
+        }
+
+        get session() {
+            return document.session;
+        }
+
+        _bindPins(from, to) {
+            let existingLink = null;
+            this._links.forEach(link => {
+                if (link.to === to.anchorPoint && link.from !== from.anchorPoint)
+                    existingLink = link;
+            });
+            if (existingLink !== null) {
+                this._links.delete(existingLink);
+            }
+
+//             const rope = new Rope(from.anchorPoint, to.anchorPoint);
+//             this._links.add(rope);
+//             this.invalidateEdges();
+            this.session.bindPins(from.node.name, from.name, to.node.name, to.name);
+        }
+
+        _animationFrameStep(timestamp) {
+            var dx = timestamp - this._prevtimestamp;
+            this._prevtimestamp = timestamp;
+            this._light = timestamp / 200 % 1.0;
+
+            let needsRedraw = this._needsRedraw;
+
+            this._links.forEach(link => {
+                const needsSimulation = link.needsSimulation();
+                if (needsSimulation) {
+                    needsRedraw = true;
+                    link.simulate(dx);
+                }
+            });
+
+            if (needsRedraw) {
+                this._needsRedraw = false;
+                this.svgCanvas.querySelectorAll("path").forEach(node => node.parentNode.removeChild(node));
+                this._links.forEach(link => this._redrawLink(link));
+                this.rafId = requestAnimationFrame(timestamp => this._animationFrameStep(timestamp));
+            } else {
+                cancelAnimationFrame(this.rafId);
+                this._isAnimating = false;
+            }
+        }
+
+        _animateEdges() {
+            let needsRedraw = this._needsRedraw;
+            if (!needsRedraw) {
+                this._links.forEach(link => {
+                    needsRedraw |= link.needsSimulation();
+                });
+            }
+
+//            if (this._links.size === 0) {
+//                this.svgCanvas.querySelectorAll("path").forEach(node => node.parentNode.removeChild(node));
+//            }
+
+            if (needsRedraw && !this._isAnimating) {
+                this._isAnimating = true;
+                this.rafId = requestAnimationFrame(timestamp => this._animationFrameStep(timestamp));
+            }
+        }
+
+        _getMaxZIndex() {
+            let maxZIndex = Number.MIN_SAFE_INTEGER;
+            this.nodes.forEach(node => {
+                const nodeZIndex = parseInt(node.style.zIndex) || 0;
+                maxZIndex = Math.max(maxZIndex, nodeZIndex);
+            });
+            return maxZIndex;
+        }
+
+        _redrawLink(link) {
+            const line = d3.line()
+                .x(function (d) { return d.x; })
+                .y(function (d) { return d.y; })
+                .curve(d3.curveBasis);
+
+            const ld = line(link.getPath());
+            const svg = d3.select(this.svgCanvas);
+            svg.append("path")
+                .attr("stroke", "black")
+                .attr("stroke-width", "4")
+                .attr("fill", "none")
+                .attr("d", ld);
+            svg.append("path")
+                .attr("stroke", "white")
+                .attr("stroke-width", "2")
+                .attr("fill", "none")
+                .attr("d", ld);
+        }
+
+        _setDraggable(element) {
+            element.addEventListener("mousedown", this._nodeMouseDownThis);
+            element.addEventListener("touchstart", this._nodeMouseDownThis);
+        }
+
+        _surfaceMouseDown(e) {
+            if (e.button === 1) {
+                this.style.cursor = "move";
+                window.addEventListener('mousemove', this._surfaceMouseMoveThis);
+                window.addEventListener('touchmove', this._surfaceMouseMoveThis);
+                window.addEventListener('mouseup', this._surfaceMouseUpThis);
+                window.addEventListener('touchend', this._surfaceMouseUpThis);
+                e.preventDefault();
+            }
+        }
+
+        _surfaceMouseMove(e) {
+            if (e.button === 1) {
+                const dx = e.movementX / this._scale / window.devicePixelRatio;
+                const dy = e.movementY / this._scale / window.devicePixelRatio;
+                this._originX += dx;
+                this._originY += dy;
+                this._updateScaleTransform();
+                e.preventDefault();
+            }
+        }
+
+        _surfaceMouseUp(e) {
+            this.style.cursor = "auto";
+            window.removeEventListener('mousemove', this._surfaceMouseMoveThis);
+            window.removeEventListener('touchmove', this._surfaceMouseMoveThis);
+            window.removeEventListener('mouseup', this._surfaceMouseUpThis);
+            window.removeEventListener('touchend', this._surfaceMouseUpThis);
+            e.preventDefault();
+        }
+
+        _nodeMouseDown(e) {
+            if (e.button !== 0)
+                return;
+
+            this._bringToFront(e.currentTarget);
+            const isContentEditableElement = () => {
+                let res = false;
+                e.path.forEach(p => {
+                    if (p.isContentEditable) {
+                        res = true;
+                    }
+                });
+                return res;
+            };
+            if (!(e.target instanceof HTMLInputElement || e.target instanceof TurbinaPinEditor) && isContentEditableElement(e.target) !== true) {
+                if (!(this._dragging instanceof Rope)) {
+                    const p = this._translatePointerToCoords(this._getPointerCoords(e));
+                    this._dragging = {
+                        element: e.currentTarget,
+                        deltaX: p.x - e.currentTarget.offsetLeft,
+                        deltaY: p.y - e.currentTarget.offsetTop
+                    };
+                }
+                window.addEventListener('mousemove', this._nodeMouseMoveThis);
+                window.addEventListener('touchmove', this._nodeMouseMoveThis);
+                window.addEventListener('mouseup', this._nodeMouseUpThis);
+                window.addEventListener('touchend', this._nodeMouseUpThis);
+                e.preventDefault();
+            }
+        }
+
+        _nodeMouseUp(e) {
+            if (this._dragging instanceof Rope) {
+                this._links.delete(this._dragging);
+                if (e.target instanceof TurbinaPin) {
+                    this._bindPins(this._dragging.from.pin, e.target);
+                } else {
+                    this.invalidateEdges();
+                }
+            } else {
+//                const element = this._dragging.element;
+//                const left = (p.x - this._dragging.deltaX);
+//                const top = (p.y - this._dragging.deltaY);
+//                element.setAttribute("left", left);
+//                element.setAttribute("top", top);
+            }
+
+            this._dragging = null;
+            window.removeEventListener('mousemove', this._nodeMouseMoveThis);
+            window.removeEventListener('touchmove', this._nodeMouseMoveThis);
+            window.removeEventListener('mouseup', this._nodeMouseUpThis);
+            window.removeEventListener('touchend', this._nodeMouseUpThis);
+            e.preventDefault();
+        }
+
+        _nodeMouseMove(e) {
+            if (this._dragging === null) {
+                return;
+            }
+            
+            const p = this._translatePointerToCoords(this._getPointerCoords(e));
+
+            if (this._dragging instanceof Rope) {
+                const rope = this._dragging;
+                if (e.target instanceof TurbinaPin) {
+                    rope.to.x = e.target.anchorPoint.x;
+                    rope.to.y = e.target.anchorPoint.y;
+                } else {
+                    rope.to.x = p.x;
+                    rope.to.y = p.y;
+                }
+                this.invalidateEdges();
+                return;
+            }
+
+            var element = this._dragging.element;
+
+            const left = (p.x - this._dragging.deltaX);
+            const top = (p.y - this._dragging.deltaY);
+            element.style.position = 'absolute';
+            element.style.left = left + 'px';
+            element.style.top = top + 'px';
+            e.preventDefault();
+        }
+
+        _wheel(e) {
+            event.preventDefault();
+            
+            const wheel = e.wheelDelta / 120.0;
+            const zoom = Math.exp(wheel * 0.2);
+
+//            if (this._scale > 1 && zoom > 1) {
+//                return;
+//            }
+            const p1 = this._translatePointerToCoords({ x: 0, y: 0 });
+
+            const p2 = this._translatePointerToCoords(this._getPointerCoords(e));
+
+            const mouseX = p2.x - p1.x;
+            const mouseY = p2.y - p1.y;
+
+            this._originX -= mouseX * (zoom - 1) / zoom;
+            this._originY -= mouseY * (zoom - 1) / zoom;
+
+            this._scale *= zoom;
+            this._updateScaleTransform();
+        }
+
+        _updateScaleTransform() {
+            const zoomPane = this._root.querySelector("#zoomPane");
+            zoomPane.style.transform = `scale(${this._scale}, ${this._scale}) translate(${this._originX}px, ${this._originY}px)`;
+        }
+
+        _bringToFront(element) {
+            const elementZIndex = parseInt(element.style.zIndex) || 0;
+            let maxZIndex = elementZIndex;
+            for (let i = 0; i < element.parentElement.children.length; i++) {
+                const e = element.parentElement.children[i];
+                const zIndex = parseInt(e.style.zIndex) || 0;
+                if (e !== element && zIndex > maxZIndex) {
+                    maxZIndex = zIndex;
+                }
+            }
+            if (elementZIndex < maxZIndex) {
+                element.style.zIndex = (maxZIndex + 1).toString();
+            }
+            this.nodes.forEach(node => {
+                    node.setAttribute("selected", node === element);
+                }
+            );
+        }
+
+        _translatePointerToCoords(p) {
+            const zoomPane = this._root.querySelector("#zoomPane");
+            return { x: p.x / this._scale - this._originX - zoomPane.offsetLeft, y: p.y / this._scale - this._originY - zoomPane.offsetTop};
+        }
+
+        _getPointerCoords(e) {
+            e = e.changedTouches ? e.changedTouches[0] : e;
+            return { x: e.clientX - this.offsetLeft, y: e.clientY - this.offsetTop };
+        }
+    }
+
+    document.registerElement('turbina-surface', TurbinaSurface);
+</script>

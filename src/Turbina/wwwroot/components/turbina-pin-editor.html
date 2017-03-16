@@ -1,0 +1,27 @@
+﻿<script>
+    "use strict";
+
+    var turbinaPinEditorDocument = document.currentScript.ownerDocument;
+
+    class TurbinaPinEditor extends HTMLElement {
+
+        createdCallback() {
+            this._root = this.attachShadow({ mode: "open" });
+        }
+
+        async setup(pin, params) {
+            this._pin = pin;
+            const tag = params["type"];
+            await pin.node.surface.templateEngine.loadTemplate(tag);
+            const element = document.createElement(tag);
+            await element.init(pin);
+            this._root.appendChild(element);
+        }
+
+        get pin() {
+            return this._pin;
+        }
+    }
+
+    document.registerElement("turbina-pin-editor", TurbinaPinEditor);
+</script>

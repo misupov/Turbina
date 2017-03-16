@@ -1,0 +1,56 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+@section webcomponents {
+    <link rel="import" href="components/turbina-surface.html">
+    <link rel="import" href="components/turbina-node.html">
+    <link rel="import" href="components/turbina-pin.html">
+}
+
+@section scripts {
+    <script>
+        const workspace = "@ViewData["Workspace"]";
+    </script>
+
+    <script src="~/lib/d3/d3.js"></script>
+    <script src="~/assets/js/session.js"></script>
+    <script src="~/assets/js/template-engine.js"></script>
+    <script src="~/assets/js/ropes.js"></script>
+    <script src="~/assets/js/main.js"></script>
+}
+
+<style>
+    .host {
+        display: grid;
+        grid-template-columns: 200px auto;
+    }
+    .left-panel {
+        display: flex;
+        flex-direction: column;
+        justify-content: stretch;
+    }
+    .operation {
+        height: 40px;
+    }
+</style>
+
+
+<div class="host" style="width: 100vw; height: 100vh">
+    <div class="left-panel">
+        <button class="operation" onclick="session.createNewNode('timer', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Timer</button>
+        <button class="operation" onclick="session.createNewNode('debug', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Debug</button>
+        <button class="operation" onclick="session.createNewNode('sampler', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Sampler</button>
+        <button class="operation" onclick="session.createNewNode('http-request', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">HttpRequest</button>
+        <button class="operation" onclick="session.createNewNode('add', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Add</button>
+        <button class="operation" onclick="session.createNewNode('keyboard-hook', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Keyboard Hook</button>
+        <button class="operation" onclick="session.createNewNode('counter', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Counter</button>
+        <button class="operation" onclick="session.createNewNode('expression', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Expression</button>
+        <button class="operation" onclick="session.createNewNode('and', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">AND</button>
+        <button class="operation" onclick="session.createNewNode('or', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">OR</button>
+        <button class="operation" onclick="session.createNewNode('not', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">NOT</button>
+        <button class="operation" onclick="session.createNewNode('random', 5000 + Math.random() * 800, 5000 + Math.random() * 800);">Random</button>
+        <button class="operation" onclick="session.resetWorkspace();">Reset Workspace</button>
+    </div>
+    <turbina-surface id="surface"></turbina-surface>
+</div>

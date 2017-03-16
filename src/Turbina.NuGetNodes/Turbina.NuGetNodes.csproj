@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp1.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NuGet.Build.Tasks" Version="4.0.0-rtm-2265" />
+    <PackageReference Include="NuGet.DependencyResolver" Version="4.0.0-rc2" />
+    <PackageReference Include="NuGet.Protocol.Core.v3" Version="4.0.0-rtm-2265" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Turbina.Engine\Turbina.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

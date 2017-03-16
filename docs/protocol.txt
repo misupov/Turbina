@@ -1,0 +1,113 @@
+*******************************************************************************
+*                                                                             *
+*                           Client->Server Messages                           *
+*                                                                             *
+*******************************************************************************
+
+Each message must contain 4 mandatory parameters:
+
+    id          Message ID. Any random string which is used to match requests
+                and responses. (Will be omitted in protocol definition for
+                shortness.)
+
+    workspace   Affected workspace. (Will be omitted in protocol definition for
+                shortness.)
+
+    type        One of predefined set of message types. It says which entity is
+                affected by the request.
+
+    action      The action.
+
+-------------------------------------------------------------------------------
+
+Reset Workspace
+
+Removes all nodes from <workspace>
+
+"type": "workspace",
+"action": "reset"
+
+-------------------------------------------------------------------------------
+
+Load Workspace
+
+"type": "workspace",
+"action": "load"
+
+-------------------------------------------------------------------------------
+
+Add Node
+
+"type": "node",
+"action": "add",
+"args": {
+    "node-type": <string>,  // required
+    "scope": <id>,          // optional
+    "title": <string>,      // optional
+    "left": <double>,       // optional
+    "top": <double>,        // optional
+    "replace-link": {       // optional
+        "node": <id>,           // required
+        "inlet": <id>           // required
+    }
+}
+
+-------------------------------------------------------------------------------
+
+Remove Node(s)
+
+"type": "node",
+"action": "remove",
+"args": {
+    "id": <string array>    // required
+}
+
+-------------------------------------------------------------------------------
+
+Bind pins
+
+"type": "pin",
+"action": "bind",
+"args": {
+    "from": {           // required
+        "node": <id>,       // required
+        "pin": <id>         // required
+    },
+    "to": {             // required
+        "node": <id>,       // required
+        "pin": <id>         // required
+    }
+}
+
+-------------------------------------------------------------------------------
+
+Unbind pins
+
+If node.pin is inlet, only one link is removed.
+If node.pin is outlet, all outgoing links are removed.
+
+"type": "pin",
+"action": "unbind",
+"args": {
+    "node": <id>,   // required
+    "pin": <id>     // required
+    }
+}
+
+-------------------------------------------------------------------------------
+
+Get value snapshot
+
+"type": "pin",
+"action": "get-value",
+"args": {
+    "node": <id>,   // required
+    "pin": <id>     // required
+    }
+}
+
+*******************************************************************************
+*                                                                             *
+*                           Server->Client Messages                           *
+*                                                                             *
+*******************************************************************************

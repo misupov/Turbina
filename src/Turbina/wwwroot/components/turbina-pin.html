@@ -1,0 +1,155 @@
+﻿<link rel="import" href="turbina-pin-editor.html">
+
+<template>
+    <style>
+        .pin-container {
+            display: flex;
+            align-items: center;
+            flex-direction: var(--container-direction);
+        }
+        .pin-bullet {
+            opacity: 0.9;
+            margin: var(--bullet-margin);
+        }
+        .pin-title {
+            margin: 0 5px 0 5px;
+        }
+        .hover {
+            filter: drop-shadow(0 0 2px rgba(255,255,255,1));
+        }
+
+    </style>
+    
+    <div class="pin-container">
+        <div class="pin-bullet">
+            <svg width="12" height="12">
+                <circle cx="6" cy="6" r="4" stroke="white" stroke-width="2" fill="cadetblue" />
+            </svg> 
+        </div>
+        <div class="pin-content">
+            <content></content>
+        </div>
+        <div class="pin-title">
+        </div>
+    </div>
+</template>
+
+<script>
+    "use strict";
+
+    var turbinaPinDocument = document.currentScript.ownerDocument;
+
+    class TurbinaPin extends HTMLElement {
+
+        createdCallback() {
+            this._root = this.createShadowRoot();
+            this._root.appendChild(turbinaPinDocument.querySelector("template").content.cloneNode(true));
+            this._anchorPoint = { x: 0, y: 0, pin: this };
+
+            this.mouseDownThis = e => this.mouseDown(e);
+            this.mouseEnterThis = e => this.mouseEnter(e);
+            this.mouseLeaveThis = e => this.mouseLeave(e);
+
+            const bullet = this._root.querySelector(".pin-bullet svg");
+            bullet.addEventListener("mousedown", this.mouseDownThis);
+            bullet.addEventListener("mouseenter", this.mouseEnterThis);
+            bullet.addEventListener("mouseleave", this.mouseLeaveThis);
+        }
+
+        async setup(node, params, isInlet) {
+            this._node = node;
+            this._name = params["id"];
+            this._title = params["id"];
+
+            if (params["advanced"]) {
+                this.setAttribute("advanced", "");
+            }
+
+            this._root.querySelector(".pin-title").innerHTML = params["id"];
+
+            if (isInlet) {
+                this.setAttribute("inlet", "");
+                this._direction = "inlet";
+
+                const editor = document.createElement("turbina-pin-editor");
+                await editor.setup(this, params);
+                this.appendChild(editor);
+            } else {
+                this.setAttribute("outlet", "");
+                this._direction = "outlet";
+            }
+        }
+
+        get name() {
+            return this._name;
+        }
+
+        get direction() {
+            return this._direction;
+        }
+
+        get node() {
+            return this._node;
+        }
+
+        get anchorPoint() {
+            return this._anchorPoint;
+        }
+
+        setValueSnapshot(value) {
+//            this._root.querySelector(".pin-title").innerHTML = value;
+            this._root.querySelector(".pin-container").setAttribute("title", value);
+        }
+
+        subscribe(callback) {
+            return this.node.surface.session.subscribe(this.node.name, this.name, callback);
+        }
+
+        unsubscribe(subscription) {
+            return this.node.surface.session.unsubscribe(subscription);
+        }
+
+        push(value) {
+            this.node.surface.session.push(this.node.name, this.name, value);
+        }
+
+        refresh() {
+            const parentX = parseInt(this.node.style.left);
+            const parentY = parseInt(this.node.style.top);
+
+            let element = this._root.querySelector(".pin-bullet");
+            let offsetX = element.clientWidth / 2;
+            let offsetY = element.clientHeight / 2;
+            while (element !== null && element !== this.node) {
+                offsetX += element.offsetLeft;
+                offsetY += element.offsetTop;
+                element = element.offsetParent;
+            }
+
+            this._anchorPoint.x = parentX + offsetX;
+            this._anchorPoint.y = parentY + offsetY;
+        }
+
+        mouseDown(e) {
+            this.node.surface.startBinding(this);
+            e.preventDefault();
+        }
+
+        mouseEnter(e) {
+            this._subscription = document.session.subscribe(this.node.name, this.name,
+                value => {
+                    this.setValueSnapshot(value);
+                });
+            this._root.querySelector(".pin-bullet").classList.add("hover");
+            e.preventDefault();
+        }
+
+        mouseLeave(e) {
+            document.session.unsubscribe(this._subscription);
+            this._root.querySelector(".pin-bullet").classList.remove("hover");
+            e.preventDefault();
+        }
+    }
+
+    document.registerElement("turbina-pin", TurbinaPin);
+</script>
